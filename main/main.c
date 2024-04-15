@@ -46,6 +46,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+#include "lathePanel/controller.h"
+
+void lathePanelTask()
+{
+    while(1)
+    {
+        controllerTask();
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
+}
 
 static void vGrblTask (void *pvParameters)
 {
@@ -61,4 +71,7 @@ void app_main(void)
     }
 
     xTaskCreatePinnedToCore(vGrblTask, "grblHAL", 8128, NULL, GRBLHAL_TASK_PRIORITY, NULL, GRBLHAL_TASK_CORE);
+
+    controllerInit();
+    xTaskCreatePinnedToCore(lathePanelTask, "lathePanel", 4096, NULL, tskIDLE_PRIORITY, NULL, 0);
 }

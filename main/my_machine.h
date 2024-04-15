@@ -19,25 +19,25 @@
 
 // NOTE: Only one board may be enabled!
 // If none is enabled pin mappings from generic_map.h will be used
-//#define BOARD_BDRING_V3P5             //
-//#define BOARD_BDRING_V4               //
-//#define BOARD_BDRING_I2S6A            //
-//#define BOARD_BDRING_6X               //
-//#define BOARD_BDRING_I2S_6PACK_EXT_V2 //
-//#define BOARD_ESPDUINO32              //
-//#define BOARD_SOURCERABBIT_4AXIS      //
-//#define BOARD_PROTONEER_3XX           //
-//#define BOARD_FYSETC_E4               //
-//#define BOARD_XPRO_V5                 //
-//#define BOARD_MKS_DLC32_V2P0          //
-//#define BOARD_MKS_TINYBEE_V1          //
-//#define BOARD_CNC3040                 //
-//#define BOARD_BLACKBOX_X32            // NOTE: Enable in CMakeLists.txt to set board specific defaults for the core!
-//#define BOARD_ROOTCNC_V2              //
-//#define BOARD_ROOTCNC_V3              //
-//#define BOARD_CNC_BOOSTERPACK         //
-//#define BOARD_GENERIC_I2S_S3          // Generic map for ESP32-S3 with I2S shift registers for I/O expansion
-//#define BOARD_MY_MACHINE              // Add my_machine_map.h in the boards directory before enabling this!
+//#define BOARD_BDRING_V3P5         //
+//#define BOARD_BDRING_V4           //
+//#define BOARD_BDRING_I2S6A        //
+//#define BOARD_BDRING_6X           //
+//#define BOARD_BDRING_I2S_6PACK_EXT_V2  //
+//#define BOARD_ESPDUINO32          //
+//#define BOARD_SOURCERABBIT_4AXIS  //
+//#define BOARD_PROTONEER_3XX       //
+//#define BOARD_FYSETC_E4           //
+//#define BOARD_XPRO_V5             //
+//#define BOARD_MKS_DLC32_V2P0      //
+//#define BOARD_MKS_TINYBEE_V1      //
+//#define BOARD_CNC3040             //
+//#define BOARD_BLACKBOX_X32        // NOTE: Enable in CMakeLists.txt to set board specific defaults for the core!
+//#define BOARD_ROOTCNC_V2          //
+//#define BOARD_ROOTCNC_V3          //
+//#define BOARD_CNC_BOOSTERPACK     //
+//#define BOARD_GENERIC_I2S_S3      // Generic map for ESP32-S3 with I2S shift registers for I/O expansion
+#define BOARD_MY_MACHINE          // Add my_machine_map.h in the boards directory before enabling this!
 //#define BOARD_BLOX
 // Configuration
 // Uncomment to enable, for some a value > 1 may be assigned, if so the default value is shown.
@@ -52,19 +52,19 @@
 // If none are specified the default PWM spindle is instantiated.
 // Spindle definitions can be found in grbl/spindle_control.h.
 // More here https://github.com/grblHAL/Plugins_spindle
-//#define SPINDLE0_ENABLE         SPINDLE_HUANYANG1
+#define SPINDLE0_ENABLE           SPINDLE_MODVFD
 //#define SPINDLE1_ENABLE         SPINDLE_PWM0_NODIR
 //#define SPINDLE2_ENABLE         SPINDLE_NONE
 //#define SPINDLE3_ENABLE         SPINDLE_NONE
 // **********************
-//#define MODBUS_ENABLE           1 // Set to 1 for auto direction, 2 for direction signal on auxillary output pin.
+#define MODBUS_ENABLE           2 // Set to 1 for auto direction, 2 for direction signal on auxillary output pin.
 //#define WEBUI_ENABLE            3 // Enable ESP3D-WEBUI plugin along with networking and SD card plugins.
 //#define WEBUI_AUTH_ENABLE       1 // Enable ESP3D-WEBUI authentication.
-//#define WIFI_ENABLE             1 //
+#define WIFI_ENABLE             1 //
 //#define WIFI_SOFTAP             1 // Use Soft AP mode for WiFi.
 //#define ETHERNET_ENABLE         1 // Ethernet streaming. Uses networking plugin.
 //#define BLUETOOTH_ENABLE        1 // Set to 1 for native radio, 2 for HC-05 module.
-//#define SDCARD_ENABLE           1 // Run gcode programs from SD card. Set to 2 to enable YModem upload.
+#define SDCARD_ENABLE           1 // Run gcode programs from SD card. Set to 2 to enable YModem upload.
 //#define MPG_ENABLE              1 // Enable MPG interface. Requires a serial port and means to switch between normal and MPG mode.
                                     // 1: Mode switching is by handshake pin input unless the keypad plugin is enabled in mode 2 which
                                     //    uses mode switching by the CMD_MPG_MODE_TOGGLE (0x8B) command character.

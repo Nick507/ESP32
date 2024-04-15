@@ -75,6 +75,14 @@ set(MY_PLUGIN_SOURCE
 )
 endif()
 
+set(LATHE_PANEL_SOURCE
+ grblConnect.c 
+ displayESP32.c
+ lathePanel/controller.cpp
+ lathePanel/display.cpp
+ lathePanel/gui.cpp
+)
+
 set(I2S_SOURCE
  i2s_out.c
 )
@@ -229,6 +237,7 @@ list (APPEND SRCS ${SPINDLE_SOURCE})
 list (APPEND SRCS ${EEPROM_SOURCE})
 list (APPEND SRCS ${LASER_SOURCE})
 list (APPEND SRCS ${EMBROIDERY_SOURCE})
+list (APPEND SRCS ${LATHE_PANEL_SOURCE})
 
 if(Ethernet OR ETHERNET_ENABLE EQUAL 1)
 list (APPEND SRCS ${ETHERNET_SOURCE})
@@ -236,7 +245,7 @@ else()
 list (APPEND SRCS ${WIFI_SOURCE})
 endif()
 
-idf_component_register(SRCS "${SRCS}" INCLUDE_DIRS ".")
+idf_component_register(SRCS "driver.c" "main.c" "grblConnect.c" "${SRCS}" INCLUDE_DIRS ".")
 
 target_compile_definitions("${COMPONENT_LIB}" PUBLIC STEP_INJECT_ENABLE=1)
 target_compile_definitions("${COMPONENT_LIB}" PUBLIC GRBL_ESP32)

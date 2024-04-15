@@ -2107,7 +2107,7 @@ static void settings_changed (settings_t *settings, settings_changed_flags_t cha
         axes_signals_t limit_fei;
         limit_fei.mask = settings->limits.disable_pullup.mask ^ settings->limits.invert.mask;
 
-        uint32_t i = sizeof(inputpin) / sizeof(input_signal_t);
+        uint32_t i = inputPinsCount;
 
         while(i--) {
 
@@ -2372,6 +2372,8 @@ static bool sdcard_unmount (FATFS **fs)
 
 static char *sdcard_mount (FATFS **fs)
 {
+    return ""; // tmp fix, to not init sd card, but keep ftp
+
     if(!bus_ok) {
 
         spi_bus_config_t bus_config = {
@@ -2567,7 +2569,7 @@ static bool driver_setup (settings_t *settings)
 {
 
 #if LITTLEFS_ENABLE
-    fs_littlefs_mount("/littlefs", esp32_littlefs_hal());
+    fs_littlefs_mount("/", esp32_littlefs_hal());
 #endif
 
     /******************
@@ -2612,7 +2614,7 @@ static bool driver_setup (settings_t *settings)
     }
 
     uint64_t mask = 0;
-    idx = sizeof(outputpin) / sizeof(output_signal_t);
+    idx = outputPinsCount;
     do {
         idx--;
         if(outputpin[idx].id == Output_SdCardCS || outputpin[idx].group == PinGroup_AuxOutputAnalog)
@@ -2636,7 +2638,7 @@ static bool driver_setup (settings_t *settings)
 
     gpio_config(&gpioConfig);
 
-    idx = sizeof(outputpin) / sizeof(output_signal_t);
+    idx = outputPinsCount;
     do {
         idx--;
         if(outputpin[idx].group == PinGroup_MotorChipSelect || outputpin[idx].group == PinGroup_MotorUART) {
@@ -3022,7 +3024,7 @@ bool driver_init (void)
 
     output_signal_t *output;
 
-    for(i = 0 ; i < sizeof(outputpin) / sizeof(output_signal_t); i++) {
+    for(i = 0 ; i < outputPinsCount; i++) {
         output = &outputpin[i];
         output->mode.output = On;
         if(output->group == PinGroup_AuxOutput) {
@@ -3232,7 +3234,7 @@ IRAM_ATTR static void gpio_isr (void *arg)
     gpio_ll_clear_intr_status(&GPIO, intr_status[0]);                           // clear intr for gpio0-gpio31
     gpio_ll_clear_intr_status_high(&GPIO, intr_status[1]);                      // clear intr for gpio32-39
 
-    uint32_t i = sizeof(inputpin) / sizeof(input_signal_t);
+    uint32_t i = inputPinsCount;
     while(i--) {
         if(intr_status[inputpin[i].offset] & inputpin[i].mask) {
             if(inputpin[i].mode.debounce && task_add_delayed(pin_debounce, &inputpin[i], 40)) {
