@@ -400,16 +400,17 @@ void threadRunButtonCB(UserEvent event, RectangleObject * obj)
 
 extern Window turningWindow;
 
-float turningCurrentDiameter = 10, turningTargetDiameter = 10, turningPassDepth = 0.2, turningLength = -10, turningRetract = 0.2;
-uint32_t turningFeed = 100, turningSpindleSpeed = 1000;
+float turningDeltaDiameter = -1, turningRoughPassDepth = 0.2, turningFinishPassDepth = 0.1, turningLength = -10, turningRetract = 0.1;
+uint32_t turningRoughFeed = 200, turningFinishFeed = 80, turningSpindleSpeed = 1000;
 
-NamedUnitsValue turningCurrentDiameterNUV (10, 10 + 38 * 0, nvFloat, &turningCurrentDiameter, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Current D", "mm", NULL);
-NamedUnitsValue turningTargetDiameterNUV  (10, 10 + 38 * 1, nvFloat, &turningTargetDiameter, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Target D", "mm", NULL);
-NamedUnitsValue turningLengthNUV          (10, 10 + 38 * 2, nvFloat, &turningLength, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Length", "mm", NULL);
-NamedUnitsValue turningPassDepthNUV       (10, 10 + 38 * 3, nvFloat, &turningPassDepth, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Deep of cut (D)", "mm", NULL);
-NamedUnitsValue turningRetractNUV         (10, 10 + 38 * 4, nvFloat, &turningRetract, "%2.2f", GUI_BUTTON_DEFAULT_FONT, "Retract", "mm", NULL);
-NamedUnitsValue turningFeedNUV            (10, 10 + 38 * 5, nvInt32, &turningFeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Feed", "mm/min", NULL);
-NamedUnitsValue turningSpindleSpeedNUV    (10, 10 + 38 * 6, nvInt32, &turningSpindleSpeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Spindle", "RPM", NULL);
+NamedUnitsValue turningDeltaDiameterNUV   (10, 10 + 38 * 0, nvFloat, &turningDeltaDiameter, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Delta D", "mm", NULL);
+NamedUnitsValue turningLengthNUV          (10, 10 + 38 * 1, nvFloat, &turningLength, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Length", "mm", NULL);
+NamedUnitsValue turningRoughCutDepthNUV   (10, 10 + 38 * 2, nvFloat, &turningRoughPassDepth, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Rough cut (D)", "mm", NULL);
+NamedUnitsValue turningRoughFeedNUV       (10, 10 + 38 * 3, nvInt32, &turningRoughFeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Rough feed", "mm/min", NULL);
+NamedUnitsValue turningFinishCutDepthNUV  (10, 10 + 38 * 4, nvFloat, &turningFinishPassDepth, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Finish cut (D)", "mm", NULL);
+NamedUnitsValue turningFinishFeedNUV      (10, 10 + 38 * 5, nvInt32, &turningFinishFeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Finish feed", "mm/min", NULL);
+NamedUnitsValue turningRetractNUV         (10, 10 + 38 * 6, nvFloat, &turningRetract, "%2.2f", GUI_BUTTON_DEFAULT_FONT, "Retract", "mm", NULL);
+NamedUnitsValue turningSpindleSpeedNUV    (10, 10 + 38 * 7, nvInt32, &turningSpindleSpeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Spindle", "RPM", NULL);
 
 
 void turningBackButtonCB(UserEvent event, RectangleObject * obj)
@@ -436,8 +437,8 @@ void turningWindowButtonCB(UserEvent event, RectangleObject * obj)
 }
 
 
-RectangleObject * turningWindowObjects[] = {&turningCurrentDiameterNUV, &turningTargetDiameterNUV, &turningPassDepthNUV, &turningRetractNUV, 
-                                            &turningFeedNUV, &turningLengthNUV, &turningSpindleSpeedNUV,
+RectangleObject * turningWindowObjects[] = {&turningDeltaDiameterNUV, &turningRoughCutDepthNUV, &turningFinishCutDepthNUV, &turningRetractNUV, 
+                                            &turningRoughFeedNUV, &turningFinishFeedNUV, &turningLengthNUV, &turningSpindleSpeedNUV,
                                             &turningRunButton, &turningPauseButton, &turningStopButton, &turningRetractButton, &turningBackButton, NULL};
 
 Window turningWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, turningWindowObjects);
@@ -445,8 +446,8 @@ Window turningWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, turningWindowObjects);
 void turningRunButtonCB(UserEvent event, RectangleObject * obj)
 {
     static uint8_t state = 0;
-    static float cutDirection, targetX, targetZ, startX, startZ, currentCutDepth;
-    static int16_t pass = 0;
+    static float cutDirection, targetX, startX, startZ, currentCutDepth;
+    static int16_t pass = 0, feed = 0;
 
     if(event == etGrblError) // handle error in any state
     {
@@ -466,14 +467,14 @@ void turningRunButtonCB(UserEvent event, RectangleObject * obj)
                 //spindleCommandLock(turningRunButtonCB);
                 guiChangeWindow(&mainWindow);
 
-                cutDirection = turningCurrentDiameter > turningTargetDiameter ? -1.0f : 1.0f;
+                cutDirection = turningDeltaDiameter < 0 ? -1.0f : 1.0f;
                 targetX = grblXPosition;
-                targetZ = grblZPosition;
                 startX = grblXPosition;
                 startZ = grblZPosition;
                 currentCutDepth = 0;
                 state = 1;
                 pass = 1;
+                feed = turningRoughFeed;
 
                 spindleSpeed = turningSpindleSpeed;
                 
@@ -483,27 +484,27 @@ void turningRunButtonCB(UserEvent event, RectangleObject * obj)
 
         case 1: // start loop
             {
-                if(turningCurrentDiameter == turningTargetDiameter)
+                float diff = fabs(turningDeltaDiameter) - currentCutDepth;
+
+                if(diff == 0)
                 {
-                    //spindleCommandLock(NULL);
-                    state = 0;
-                    if(spindleState == ssRun) spindleToggleButtonCB(etButtonPressed, NULL);
+                    state = 5;
+                    grblExecuteCommand(turningRunButtonCB, "G0X%.3f\n", targetX);
                     break;
                 }
 
-                float diff = fabs(turningTargetDiameter - turningCurrentDiameter) - currentCutDepth;
-
-                if(diff > 2 * turningPassDepth)
+                if(diff >= turningRoughPassDepth + turningFinishPassDepth)
                 {
-                    currentCutDepth = pass++ * turningPassDepth;
-                } else if(diff < turningPassDepth)
+                    currentCutDepth = pass++ * turningRoughPassDepth;
+                } 
+                else if(diff <= turningFinishPassDepth + 0.001 /*tolerance*/)
                 {
-                    currentCutDepth += diff;
-                    turningCurrentDiameter = turningTargetDiameter;
+                    currentCutDepth = fabs(turningDeltaDiameter);
+                    feed = turningFinishFeed;
                 }
                 else
                 {
-                    currentCutDepth += diff / 2;
+                    currentCutDepth = fabs(turningDeltaDiameter) - turningFinishPassDepth;
                 }
 
                 targetX = startX + currentCutDepth * cutDirection / 2; 
@@ -513,21 +514,23 @@ void turningRunButtonCB(UserEvent event, RectangleObject * obj)
             break;
         
         case 2: // main part
-            targetZ += turningLength;
-            grblExecuteCommand(turningRunButtonCB, "G1Z%.3fF%d\n", targetZ, turningFeed);
+            grblExecuteCommand(turningRunButtonCB, "G1Z%.3fF%d\n", startZ + turningLength, feed);
             state = 3;
             break;
         
         case 3: // retract
-            targetX -= turningRetract * cutDirection;
-            grblExecuteCommand(turningRunButtonCB, "G0X%.3f\n", targetX);
+            grblExecuteCommand(turningRunButtonCB, "G0X%.3f\n", targetX - turningRetract * cutDirection);
             state = 4;
             break;
         
         case 4: // back to start
-            targetZ = startZ;
-            grblExecuteCommand(turningRunButtonCB, "G0Z%.3f\n", targetZ);
+            grblExecuteCommand(turningRunButtonCB, "G0Z%.3f\n", startZ);
             state = 1;
+            break;
+
+        case 5: // stop
+            state = 0;
+            if(spindleState == ssRun) spindleToggleButtonCB(etButtonPressed, NULL);
             break;
     }
 }
@@ -540,6 +543,7 @@ void turningRunButtonCB(UserEvent event, RectangleObject * obj)
 
 float coneAngle = 10;
 NamedUnitsValue coneAngleNUV (10, 10 + 38 * 0, nvFloat, &coneAngle, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Cone angle", "deg", NULL);
+Caption coneAngleHint        (10, 10 + 38 * 1, 0, 0, "(negative angle for internal)");
 
 extern Window coneWindow;
 
@@ -567,8 +571,8 @@ void coneWindowButtonCB(UserEvent event, RectangleObject * obj)
 }
 
 
-RectangleObject * coneWindowObjects[] = {&coneAngleNUV, &turningPassDepthNUV, &turningRetractNUV, 
-                                            &turningFeedNUV, &turningLengthNUV, &turningSpindleSpeedNUV,
+RectangleObject * coneWindowObjects[] = {&coneAngleHint, &coneAngleNUV, &turningRetractNUV, 
+                                            &turningLengthNUV, &turningSpindleSpeedNUV,
                                             &coneRunButton, &conePauseButton, &coneStopButton, &coneRetractButton, &coneBackButton, NULL};
 
 Window coneWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, coneWindowObjects);
@@ -597,14 +601,13 @@ void coneRunButtonCB(UserEvent event, RectangleObject * obj)
                 //spindleCommandLock(turningRunButtonCB);
                 guiChangeWindow(&mainWindow);
 
-                cutDirection = -1.0f; //turningCurrentDiameter > turningTargetDiameter ? -1.0f : 1.0f;
+                cutDirection = coneAngle > 0 ? -1.0f : 1.0f;
                 targetX = grblXPosition;
                 targetZ = grblZPosition;
                 startX = grblXPosition;
                 startZ = grblZPosition;
                 currentCutDepth = 0;
-                turningCurrentDiameter = 0;
-                turningTargetDiameter = sin(DEG2RAD(coneAngle)) * fabs(turningLength);
+                turningDeltaDiameter = sin(DEG2RAD(fabs(coneAngle))) * fabs(turningLength);
                 state = 1;
                 pass = 1;
 
@@ -616,7 +619,7 @@ void coneRunButtonCB(UserEvent event, RectangleObject * obj)
 
         case 1: // start loop
             {
-                if(turningCurrentDiameter == turningTargetDiameter)
+                if(fabs(turningDeltaDiameter) - currentCutDepth)
                 {
                     //spindleCommandLock(NULL);
                     state = 0;
@@ -624,15 +627,15 @@ void coneRunButtonCB(UserEvent event, RectangleObject * obj)
                     break;
                 }
 
-                float diff = fabs(turningTargetDiameter - turningCurrentDiameter) - currentCutDepth;
+                float diff = fabs(turningDeltaDiameter) - currentCutDepth;
 
-                if(diff > 2 * turningPassDepth)
+                if(diff > 2 * turningRoughPassDepth)
                 {
-                    currentCutDepth = pass++ * turningPassDepth;
-                } else if(diff < turningPassDepth)
+                    currentCutDepth = pass++ * turningRoughPassDepth;
+                } 
+                else if(diff < turningRoughPassDepth)
                 {
-                    currentCutDepth += diff;
-                    turningCurrentDiameter = turningTargetDiameter;
+                    currentCutDepth = fabs(turningDeltaDiameter);
                 }
                 else
                 {
@@ -647,11 +650,11 @@ void coneRunButtonCB(UserEvent event, RectangleObject * obj)
         
         case 2: // main part
             if(turningLength < 0)
-                targetZ -= currentCutDepth / sin(DEG2RAD(coneAngle));
+                targetZ -= currentCutDepth / sin(DEG2RAD(fabs(coneAngle)));
             else
-                targetZ += currentCutDepth / sin(DEG2RAD(coneAngle));
+                targetZ += currentCutDepth / sin(DEG2RAD(fabs(coneAngle)));
             targetX = startX;
-            grblExecuteCommand(coneRunButtonCB, "G1X%.3fZ%.3fF%d\n", targetX, targetZ, turningFeed);
+            grblExecuteCommand(coneRunButtonCB, "G1X%.3fZ%.3fF%d\n", targetX, targetZ, turningRoughFeed);
             state = 3;
             break;
         
