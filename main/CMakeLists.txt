@@ -245,7 +245,7 @@ else()
 list (APPEND SRCS ${WIFI_SOURCE})
 endif()
 
-idf_component_register(SRCS "driver.c" "main.c" "grblConnect.c" "${SRCS}" INCLUDE_DIRS ".")
+idf_component_register(SRCS "displayESP32.c" "driver.c" "main.c" "grblConnect.c" "${SRCS}" INCLUDE_DIRS ".")
 
 target_compile_definitions("${COMPONENT_LIB}" PUBLIC STEP_INJECT_ENABLE=1)
 target_compile_definitions("${COMPONENT_LIB}" PUBLIC GRBL_ESP32)
