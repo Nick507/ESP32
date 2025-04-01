@@ -664,6 +664,11 @@ void guiChangeWindow(RectangleObject * object)
     currentObject->draw();
 }
 
+RectangleObject * guiGetCurrentWindow()
+{
+    return currentObject;
+}
+
 void guiBackWindow()
 {
     if(prevObject)

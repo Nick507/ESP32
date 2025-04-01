@@ -10,6 +10,7 @@ extern "C" {
 extern float grblXPosition;
 extern float grblYPosition;
 extern float grblZPosition;
+extern int32_t grblYMPos;
 extern volatile int32_t handEncoderValue;
 
 void grblConnectInit();
@@ -20,6 +21,7 @@ void grblEnqueueRealtimeCommand(char c);
 uint16_t grblGetState();
 bool grblModbusWriteReg(uint16_t reg, uint16_t value, uint16_t * prevValue);
 bool grblModbusReadReg(uint16_t reg, uint16_t * value);
+bool grblModbusReadAbsPos(uint32_t * value);
 void grblListFiles(char * buf, uint16_t len);
 void grblRestart();
 const char * grblGetIP();

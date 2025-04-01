@@ -234,5 +234,6 @@ public:
 void guiInit(RectangleObject * object);
 void guiTask();
 void guiChangeWindow(RectangleObject * object);
+RectangleObject * guiGetCurrentWindow();
 void guiBackWindow();
 

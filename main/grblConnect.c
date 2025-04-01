@@ -17,6 +17,7 @@
 float grblXPosition;
 float grblYPosition;
 float grblZPosition;
+int32_t grblYMPos;
 volatile int32_t handEncoderValue = 0;
 
 static void IRAM_ATTR handEncoderInterruptHandler(void *args)
@@ -112,6 +113,8 @@ void getPositions()
 {
     int32_t curpos[N_AXIS];
     memcpy(curpos, sys.position, sizeof(sys.position));
+
+    grblYMPos = curpos[Y_AXIS];
     float mpos[N_AXIS];
     system_convert_array_steps_to_mpos(mpos, curpos);
     grblXPosition = mpos[X_AXIS];
@@ -148,6 +151,7 @@ uint16_t grblGetState()
 
 static void modbusRecvCB (modbus_message_t *msg);
 static void modbusErrCB (uint8_t code, void *context);
+static TaskHandle_t modbusTaskHandle = NULL;
 
 static const modbus_callbacks_t modbusCallbacks = 
 {
@@ -168,11 +172,14 @@ static void modbusRecvCB(modbus_message_t *msg)
             *((uint16_t*)msg->context) = (msg->adu[3] << 8) | msg->adu[4];
         }
     }
+
+    xTaskNotify(modbusTaskHandle, 0, eNoAction);
 }
 
 static void modbusErrCB(uint8_t code, void *context)
 {
     printf("modbusErrCB\n");
+    xTaskNotify(modbusTaskHandle, 0, eNoAction);
 }
 
 bool grblModbusWriteReg(uint16_t reg, uint16_t value, uint16_t * prevValue)
@@ -196,12 +203,11 @@ bool grblModbusWriteReg(uint16_t reg, uint16_t value, uint16_t * prevValue)
         .rx_length = 8
     };
 
-    for(int i = 0; i < 25; i++)
-    {
-        if(modbus_send(&msg, &modbusCallbacks, true /*block*/)) return true;
-    }
+    modbusTaskHandle = xTaskGetCurrentTaskHandle();
 
-    return false;
+    modbus_send(&msg, &modbusCallbacks, false);
+    
+    return xTaskNotifyWait(0, 0, NULL, 100 / portTICK_PERIOD_MS);
 }
 
 bool grblModbusReadReg(uint16_t reg, uint16_t * value)
@@ -220,12 +226,68 @@ bool grblModbusReadReg(uint16_t reg, uint16_t * value)
         .rx_length = 7
     };
 
-    for(int i = 0; i < 25; i++)
+    // can't use blocking mode, because getting mutli-threaded call of modbus poll method which leads to crash
+    modbusTaskHandle = xTaskGetCurrentTaskHandle();
+    
+    modbus_send(&msg, &modbusCallbacks, false);
+
+    return xTaskNotifyWait(0, 0, NULL, 100 / portTICK_PERIOD_MS);
+}
+
+
+static uint8_t absPosReqState = 0; // 0 - not started, 1 - in progress, 2 - ready, 3 - failed
+static uint32_t absPosValue = 0;
+
+static void modbusPosReqRecvCB(modbus_message_t *msg)
+{
+    if(!(msg->adu[1] & 0x80)) 
     {
-        if(modbus_send(&msg, &modbusCallbacks, true /*block*/)) return true;
+        absPosValue = (msg->adu[5] << 24) | (msg->adu[6] << 16) | (msg->adu[3] << 8) | msg->adu[4];
+        absPosReqState = 2;
+    }
+    else absPosReqState = 3;
+}
+
+static void modbusPosReqErrCB(uint8_t code, void *context)
+{
+    printf("modbusPosReqErrCB\n");
+    absPosReqState = 3;
+}
+
+static const modbus_callbacks_t modbusPosReqCallbacks = 
+{
+    .on_rx_packet = modbusPosReqRecvCB,
+    .on_rx_exception = modbusPosReqErrCB
+};
+
+bool grblModbusReadAbsPos(uint32_t * value)
+{
+    bool res = false;
+    if(absPosReqState == 1) return false;
+    if(absPosReqState == 2)
+    {
+        *value = absPosValue;
+        res = true;
     }
 
-    return false;
+    modbus_message_t msg = 
+    {
+        .context = (void *)value,
+        .crc_check = true,
+        .adu[0] = 1, // TODO: read from config!!!
+        .adu[1] = ModBus_ReadHoldingRegisters,
+        .adu[2] = 0x10,
+        .adu[3] = 0x14,
+        .adu[4] = 0x00,
+        .adu[5] = 0x02,
+        .tx_length = 8,
+        .rx_length = 9
+    };
+    
+    absPosReqState = 1;
+    modbus_send(&msg, &modbusPosReqCallbacks, false);
+
+    return res;
 }
 
 // ==================================== FILES ==========================

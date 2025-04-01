@@ -797,8 +797,10 @@ Button disButton(120, 10, 90, 50, "Disable", GUI_BUTTON_DEFAULT_FONT, disButtonC
 Button resetButton(230, 10, 90, 50, "Reset", GUI_BUTTON_DEFAULT_FONT, resetButtonCB);
 Caption ipAddr(10, 270, 150, 50, captionIPAddr, GUI_BUTTON_DEFAULT_FONT);
 Button miscBackButton(370, 260, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &miscBackButtonCB);
+int32_t currentAngle = 0;
+NamedUnitsValue currentAngleNUV (10, 70, nvInt32, &currentAngle, "%6d", GUI_BUTTON_DEFAULT_FONT, "Angle", "deg", NULL);
 
-RectangleObject * miscWindowObjects[] = {&enaButton, &disButton, &resetButton, &miscBackButton, &ipAddr, NULL};
+RectangleObject * miscWindowObjects[] = {&enaButton, &disButton, &resetButton, &miscBackButton, &ipAddr, &currentAngleNUV, NULL};
 
 Window miscWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, miscWindowObjects);
 
@@ -885,6 +887,20 @@ void controllerTask(void)
             default: grblStateValue.setText("Unk"); break;
         }
         grblStateValue.setNeedToRedraw(true);
+    }
+
+    if(guiGetCurrentWindow() == &miscWindow)
+    {
+        uint32_t newAngle;
+        if(grblModbusReadAbsPos(&newAngle))
+        {
+            if(currentAngle != newAngle)
+            {
+                currentAngle = newAngle;
+                currentAngleNUV.setNeedToRedraw(true);
+            }
+            printf("%d %d\n", newAngle, grblYMPos);
+        }
     }
 
     if(grblCommandInProgress)
