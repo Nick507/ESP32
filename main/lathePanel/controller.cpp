@@ -7,11 +7,14 @@
 #include <math.h>
 #include <cstdarg>
 #include <cassert>
+#include "winding.h"
+#include "thread.h"
 
 // espefuse.py -p COM16 set_flash_voltage 3.3V
 
+#define DEG2RAD(x) ((x) * M_PI / 180.0)
+
 extern Window mainWindow;
-extern Window threadWindow;
 
 ObjectCallbackPtr commandsStack[10];
 uint8_t commandsStackSize = 0;
@@ -48,6 +51,10 @@ bool grblExecuteCommand(ObjectCallbackPtr cb, const char* format, ...)
     }
     return res;
 }
+
+float grblGetXPosition(void) {return grblXPosition;}
+float grblGetYPosition(void) {return grblYPosition;}
+float grblGetZPosition(void) {return grblZPosition;}
 
 //=====================================================================================
 //
@@ -236,161 +243,6 @@ void spindleDirButtonCB(UserEvent event, RectangleObject * obj)
     spindleDirButton.setText(spindleDirectionForward ? "Rev" : "Fwd");
 }
 
-//=====================================================================================
-//
-//                             Thread
-//
-//=====================================================================================
-#define DEG2RAD(x) ((x) * M_PI / 180.0)
-
-float threadPitch = 1, threadLength = -10, threadFirstCut = 0.1, threadDepth = 0.61, threadAngle = 30, threadRegression = 1.1;
-uint32_t threadFeed = 1000, threadSpringPasses = 2;
-
-void threadPitchValueCB(UserEvent event, RectangleObject * obj);
-
-NamedUnitsValue threadPitchNUV       (10, 10 + 38 * 0, nvFloat, &threadPitch, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Pitch", "mm", &threadPitchValueCB);
-NamedUnitsValue threadLengthNUV      (10, 10 + 38 * 1, nvFloat, &threadLength, "%7.2f", GUI_BUTTON_DEFAULT_FONT, "Length", "mm", NULL);
-NamedUnitsValue threadFirstCutNUV    (10, 10 + 38 * 2, nvFloat, &threadFirstCut, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "First cut", "mm", NULL);
-Caption threadFirstCutHint           (280, 17 + 38 * 2, 0, 0, "(neg for internal)");
-NamedUnitsValue threadDepthNUV       (10, 10 + 38 * 3, nvFloat, &threadDepth, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Depth", "mm", NULL);
-NamedUnitsValue threadAngleNUV       (10, 10 + 38 * 4, nvFloat, &threadAngle, "%5.1f", GUI_BUTTON_DEFAULT_FONT, "Angle", "deg", NULL);
-NamedUnitsValue threadRegressionNUV  (10, 10 + 38 * 5, nvFloat, &threadRegression, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Regression", NULL, NULL);
-NamedUnitsValue threadFeedNUV        (10, 10 + 38 * 6, nvInt32, &threadFeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Feed", "mm/min", NULL);
-NamedUnitsValue threadSpringPassesNUV(10, 10 + 38 * 7, nvInt32, &threadSpringPasses, "%2d", GUI_BUTTON_DEFAULT_FONT, "Spring passes", NULL, NULL);
-
-void threadPitchValueCB(UserEvent event, RectangleObject * obj)
-{
-    threadDepth = 0.61 * threadPitch; // 0.61 = 0.866 * 17/24   0.866 = cos(60/2)
-    threadDepthNUV.getValue().setNeedToRedraw(true);
-}
-
-void threadWindowButtonCB(UserEvent event, RectangleObject * obj)
-{
-    guiChangeWindow(&threadWindow);
-}
-
-void threadBackButtonCB(UserEvent event, RectangleObject * obj)
-{
-    guiChangeWindow(&mainWindow);
-}
-
-void threadRunButtonCB(UserEvent event, RectangleObject * obj); // forward declaration
-
-Button threadBackButton(370 , 260, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &threadBackButtonCB);
-Button threadRunButton(370 , 10, 100, 50, "Run", GUI_BUTTON_DEFAULT_FONT, &threadRunButtonCB);
-
-RectangleObject * threadWindowObjects[] = {&threadPitchNUV, &threadLengthNUV, &threadFirstCutNUV, &threadDepthNUV,
-                                    &threadAngleNUV, &threadRegressionNUV, &threadFeedNUV, &threadBackButton, &threadRunButton,
-                                    &threadSpringPassesNUV, &threadFirstCutHint, NULL};
-
-Window threadWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, threadWindowObjects);
-
-void threadRunButtonCB(UserEvent event, RectangleObject * obj)
-{
-    static uint8_t state = 0;
-    static uint16_t pass, springPass;
-    static float cutDirection, targetX, targetY, targetZ, startX, startZ;
-   // static uint16_t r5, r6, r21;
-
-    if(event == etGrblError) // handle error in any state
-    {
-        //spindleCommandLock(NULL);
-        state = 0;
-        return;
-    }
-
-    switch(state)
-    {
-        case 0: // idle
-            {
-                if(obj != &threadRunButton) return;
-
-                // if(!grblModbusWriteReg(5, 250, &r5)   ||
-                //    !grblModbusWriteReg(6, 10, &r6)    ||
-                //    !grblModbusWriteReg(21, 120, &r21))
-                // {
-                //     printf("Thread command failed to set modbus registers\n");
-                //     return;
-                // }
-
-                //spindleCommandLock();
-                guiChangeWindow(&mainWindow);
-
-                cutDirection = threadFirstCut > 0 ? -1.0f : 1.0f;
-                targetX = grblXPosition;
-                targetY = grblYPosition;
-                targetZ = grblZPosition;
-                startX = grblXPosition;
-                startZ = grblZPosition;
-                pass = 1;
-                springPass = 0;
-                state = 1;
-            }
-            __attribute__ ((fallthrough));
-
-        case 1: // start loop
-            {
-                if(springPass > threadSpringPasses)
-                {
-                    //spindleCommandLock(NULL);
-                    state = 0;
-
-                    // if(!grblModbusWriteReg(5, r5, NULL) ||
-                    //    !grblModbusWriteReg(6, r6, NULL) ||
-                    //    !grblModbusWriteReg(21, r21, NULL))
-                    // {
-                    //     printf("Thread command failed to restore modbus registers\n");
-                    // }
-                    break;
-                }
-
-                float doc = fabs(threadFirstCut) * powf((float)pass++, 1.0f / threadRegression);
-                if(doc > threadDepth)
-                {
-                    doc = threadDepth;
-                    springPass++;
-                }
-
-                targetX = startX + doc * cutDirection;
-                targetZ = startZ - doc * tanf(DEG2RAD(threadAngle));
-                grblExecuteCommand(threadRunButtonCB, "G0X%.3fZ%.3f\n", targetX, targetZ);
-                state = 2;
-            }
-            break;
-        
-        case 2: // main part
-            targetZ += threadLength;
-	        targetY += fabs(threadLength / threadPitch);
-            grblExecuteCommand(threadRunButtonCB, "G1Y%.3fZ%.3fF%d\n", targetY, targetZ, threadFeed);
-            state = 3;
-            break;
-        
-        case 3: // make exit taper
-            targetY = (int)targetY + 5/*fixed amount of rotations*/;
-            grblExecuteCommand(threadRunButtonCB, "G1Y%.3fF%d\n", targetY, threadFeed);
-            state = 4;
-            break;
-        
-        case 4: // retract
-            targetX = startX + -.5/*fixed retract*/ * cutDirection;
-            grblExecuteCommand(threadRunButtonCB, "G0X%.3f\n", targetX);
-            state = 5;
-            break;
-        
-        case 5: // back to start
-            targetZ = startZ;
-            grblExecuteCommand(threadRunButtonCB, "G0Z%.3f\n", targetZ);
-            state = 1;
-            break;
-    }
-}
-
-// void threadRunButtonCB(UserEvent event, RectangleObject * obj)
-// {
-//     grblExecuteCommand("G18\nG76 P%.2f Z%.2f I-.01 J%.2f K%.2f Q%.2f R%.2f F%d\n", 
-//             threadPitch, threadLength, threadFirstCut, threadDepth, threadAngle, threadRegression, threadFeed);
-//     guiChangeWindow(&mainWindow);
-// }
 
 //=====================================================================================
 //
@@ -785,6 +637,8 @@ void resetButtonCB(UserEvent event, RectangleObject * obj)
     grblRestart();
 }
 
+void rigidButtonCB(UserEvent event, RectangleObject * obj);
+
 void miscBackButtonCB(UserEvent event, RectangleObject * obj)
 {
     guiChangeWindow(&mainWindow);
@@ -795,12 +649,13 @@ char captionIPAddr[16] = {"0.0.0.0"};
 Button enaButton(10, 10, 90, 50, "Enable", GUI_BUTTON_DEFAULT_FONT, enaButtonCB);
 Button disButton(120, 10, 90, 50, "Disable", GUI_BUTTON_DEFAULT_FONT, disButtonCB);
 Button resetButton(230, 10, 90, 50, "Reset", GUI_BUTTON_DEFAULT_FONT, resetButtonCB);
+Button rigidButton(340, 10, 90, 50, "Rigid", GUI_BUTTON_DEFAULT_FONT, rigidButtonCB);
 Caption ipAddr(10, 270, 150, 50, captionIPAddr, GUI_BUTTON_DEFAULT_FONT);
 Button miscBackButton(370, 260, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &miscBackButtonCB);
 int32_t currentAngle = 0;
 NamedUnitsValue currentAngleNUV (10, 70, nvInt32, &currentAngle, "%6d", GUI_BUTTON_DEFAULT_FONT, "Angle", "deg", NULL);
 
-RectangleObject * miscWindowObjects[] = {&enaButton, &disButton, &resetButton, &miscBackButton, &ipAddr, &currentAngleNUV, NULL};
+RectangleObject * miscWindowObjects[] = {&enaButton, &disButton, &resetButton, &miscBackButton, &rigidButton, &ipAddr, &currentAngleNUV, NULL};
 
 Window miscWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, miscWindowObjects);
 
@@ -808,6 +663,35 @@ void miscButtonCB(UserEvent event, RectangleObject * obj)
 {
     strcpy(captionIPAddr, grblGetIP());
     guiChangeWindow(&miscWindow);
+}
+
+void rigidButtonCB(UserEvent event, RectangleObject * obj)
+{
+    static uint16_t r5, r6, r21;
+
+    if(*rigidButton.getText() == 'R')
+    {
+        if(!grblModbusWriteReg(5, 250, &r5)   ||
+           !grblModbusWriteReg(6, 10, &r6)    ||
+           !grblModbusWriteReg(21, 120, &r21) ||
+           !grblModbusWriteReg(98, 1, NULL))
+        {
+            printf("Failed to set modbus registers\n");
+            return;
+        }
+        rigidButton.setText("Soft");
+    }
+    else
+    {
+        if(!grblModbusWriteReg(5, r5, NULL) ||
+           !grblModbusWriteReg(6, r6, NULL) ||
+           !grblModbusWriteReg(21, r21, NULL) ||
+           !grblModbusWriteReg(98, 0, NULL))
+        {
+            printf("Failed to restore modbus registers\n");
+        }
+        rigidButton.setText("Rigid");
+    }
 }
 
 //=====================================================================================
@@ -846,6 +730,7 @@ Button miscButton(120, 140, 70, 50, "Misc", GUI_BUTTON_DEFAULT_FONT, miscButtonC
 Button fileButton(200, 140, 70, 50, "File", GUI_BUTTON_DEFAULT_FONT, fileButtonCB);
 Button turningWindowButton(10, 200, 100, 50, "Turning", GUI_BUTTON_DEFAULT_FONT, &turningWindowButtonCB);
 Button coneWindowButton(120, 200, 70, 50, "Cone", GUI_BUTTON_DEFAULT_FONT, &coneWindowButtonCB);
+Button windingWindowButton(200, 200, 70, 50, "Wind", GUI_BUTTON_DEFAULT_FONT, &windingWindowButtonCB);
 
 RectangleObject * mainWindowObjects[] = {&xPositionCaption, &yPositionCaption, &zPositionCaption, 
                                   &zeroXPositionButton, &zeroYPositionButton, &zeroZPositionButton, 
@@ -853,7 +738,7 @@ RectangleObject * mainWindowObjects[] = {&xPositionCaption, &yPositionCaption, &
                                   &jogStep1Button, &jogStep01Button, &jogStep001Button,
                                   &threadWindowButton, 
                                   &spindleSpeedCaption, &spindleToggleButton, &spindleIncreaseSpeedButton, &spindleDecreaseSpeedButton, &spindleDirButton, 
-                                  &miscButton, &holdButton, &fileButton, &turningWindowButton, &coneWindowButton,
+                                  &miscButton, &holdButton, &fileButton, &turningWindowButton, &coneWindowButton, &windingWindowButton,
                                   &grblStateValue,
                                   NULL};
 
@@ -889,19 +774,19 @@ void controllerTask(void)
         grblStateValue.setNeedToRedraw(true);
     }
 
-    if(guiGetCurrentWindow() == &miscWindow)
-    {
-        uint32_t newAngle;
-        if(grblModbusReadAbsPos(&newAngle))
-        {
-            if(currentAngle != newAngle)
-            {
-                currentAngle = newAngle;
-                currentAngleNUV.setNeedToRedraw(true);
-            }
-            printf("%d %d\n", newAngle, grblYMPos);
-        }
-    }
+    // if(guiGetCurrentWindow() == &miscWindow)
+    // {
+    //     uint32_t newAngle;
+    //     if(grblModbusReadAbsPos(&newAngle))
+    //     {
+    //         if(currentAngle != newAngle)
+    //         {
+    //             currentAngle = newAngle;
+    //             currentAngleNUV.setNeedToRedraw(true);
+    //         }
+    //         printf("%d %d\n", newAngle, grblYMPos);
+    //     }
+    // }
 
     if(grblCommandInProgress)
     {
