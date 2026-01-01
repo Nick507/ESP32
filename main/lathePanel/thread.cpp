@@ -122,7 +122,7 @@ void threadRunButtonCB(UserEvent event, RectangleObject * obj)
 
                 targetX = startX + doc * cutDirection;
                 targetZ = startZ - doc * tanf(DEG2RAD(threadAngle));
-                grblExecuteCommand(threadRunButtonCB, "G0X%.3fZ%.3f\n", targetX, targetZ);
+                grblExecuteCommandBuffered(threadRunButtonCB, "G0X%.3fZ%.3f\n", targetX, targetZ);
                 state = 2;
             }
             break;
@@ -130,25 +130,25 @@ void threadRunButtonCB(UserEvent event, RectangleObject * obj)
         case 2: // main part
             targetZ += threadLength;
 	        targetY += fabs(threadLength / threadPitch);
-            grblExecuteCommand(threadRunButtonCB, "G1Y%.3fZ%.3fF%d\n", targetY, targetZ, threadFeed);
+            grblExecuteCommandBuffered(threadRunButtonCB, "G1Y%.3fZ%.3fF%d\n", targetY, targetZ, threadFeed);
             state = 3;
             break;
         
         case 3: // make exit taper
             targetY = (int)targetY + 5/*fixed amount of rotations*/;
-            grblExecuteCommand(threadRunButtonCB, "G1Y%.3fF%d\n", targetY, threadFeed);
+            grblExecuteCommandBuffered(threadRunButtonCB, "G1Y%.3fF%d\n", targetY, threadFeed);
             state = 4;
             break;
         
         case 4: // retract
             targetX = startX + -.5/*fixed retract*/ * cutDirection;
-            grblExecuteCommand(threadRunButtonCB, "G0X%.3f\n", targetX);
+            grblExecuteCommandBuffered(threadRunButtonCB, "G0X%.3f\n", targetX);
             state = 5;
             break;
         
         case 5: // back to start
             targetZ = startZ;
-            grblExecuteCommand(threadRunButtonCB, "G0Z%.3f\n", targetZ);
+            grblExecuteCommandBuffered(threadRunButtonCB, "G0Z%.3f\n", targetZ);
             state = 1;
             break;
     }

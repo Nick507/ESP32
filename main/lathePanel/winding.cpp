@@ -92,6 +92,7 @@ void windingRunButtonCB(UserEvent event, RectangleObject * obj)
             {
                 if(currentTurn >= windingTurns)
                 {
+                    grblExecuteCommandBuffered(NULL, ""); // reset callback
                     state = 0; // done
                     break;
                 }
@@ -120,10 +121,10 @@ void windingRunButtonCB(UserEvent event, RectangleObject * obj)
                 }
 
                 // Send G-code command
-                grblExecuteCommand(windingRunButtonCB, "G1Y%.3fZ%.3fF%d\n", startY -(float)(currentTurn + 1), startZ + zPos * windingDirection, windingFeed);
+                grblExecuteCommandBuffered(windingRunButtonCB, "G1Y%.3fZ%.3fF%d\n", startY -(float)(currentTurn + 1), startZ + zPos * windingDirection, windingFeed);
                 
                 currentTurn++;
-                // Stay in state 3 to continue loop
+                
             }
             break;
     }

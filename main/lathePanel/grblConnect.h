@@ -26,6 +26,7 @@ void grblListFiles(char * buf, uint16_t len);
 void grblRestart();
 const char * grblGetIP();
 int grblGetLastError();
+bool grblExecuteCommandBuffered(char* command);
 
 #ifdef __cplusplus
 }

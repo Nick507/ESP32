@@ -16,6 +16,7 @@ void controllerTask(void);
 #include "gui.h"
 
 bool grblExecuteCommand(ObjectCallbackPtr cb, const char* format, ...);
+bool grblExecuteCommandBuffered(ObjectCallbackPtr cb, const char* format, ...);
 float grblGetXPosition(void);
 float grblGetYPosition(void);
 float grblGetZPosition(void);

@@ -16,6 +16,18 @@ ObjectCallbackPtr commandsStack[10];
 uint8_t commandsStackSize = 0;
 
 static bool grblCommandInProgress = false;
+static ObjectCallbackPtr grblCommandBufferedCallback = NULL;
+
+bool grblExecuteCommandBuffered(ObjectCallbackPtr cb, const char* format, ...)
+{
+    static char buf[128];
+    va_list varArgs;
+    va_start(varArgs, format);
+    vsnprintf(buf, sizeof(buf), format, varArgs);
+    va_end(varArgs);
+    grblCommandBufferedCallback = cb;
+    return grblExecuteCommandBuffered(buf);
+}
 
 bool grblExecuteCommand(ObjectCallbackPtr cb, const char* format, ...)
 {
@@ -45,6 +57,7 @@ bool grblExecuteCommand(ObjectCallbackPtr cb, const char* format, ...)
             commandsStack[commandsStackSize++] = cb;
         }
     }
+
     return res;
 }
 
@@ -408,6 +421,16 @@ void controllerTask(void)
                 commandsStack[--commandsStackSize](event, NULL);
                 if(grblCommandInProgress) break;
             }
+        }
+    }
+    else if(grblCommandBufferedCallback)
+    {
+        UserEvent event = etUserNone;
+        if((grblState == 1) || grblGetLastError()) event = etGrblError;
+        else if(grblExecuteCommandBuffered(&checkGrblCommand)) event = etGrblOk;
+        if(event != etUserNone)
+        {
+            grblCommandBufferedCallback(event, NULL);
         }
     }
 

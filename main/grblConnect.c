@@ -12,6 +12,7 @@
 #include "lathePanel/grblConnect.h"
 #include "boards/my_machine_map.h"
 #include "esp_ipc.h"
+#include "grbl/planner.h"
 
 // ================ exposed variables =============
 float grblXPosition;
@@ -107,6 +108,27 @@ bool grblExecuteCommand(char* command)
     // writeBuf[writeBufPos] = 0;
     // printf("<%s", writeBuf);
     return res;
+}
+
+bool grblExecuteCommandBuffered(char* command)
+{
+    // Check planner buffer has space
+    if(plan_get_block_buffer_available() < 34) 
+    {
+        return false;  // Wait for more space
+    }
+
+    if(!command[0]) 
+    {
+        return true;
+    }
+
+    status_code_t result = gc_execute_block(command);
+    
+    printf(">(%s) %s", result == Status_OK ? "OK" : "FAILED", command);
+    if(!strchr(command, '\n')) printf("\n");
+    
+    return result == Status_OK;
 }
 
 void getPositions()
