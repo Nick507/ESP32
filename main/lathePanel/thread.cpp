@@ -1,5 +1,6 @@
 #include "thread.h"
 #include "controller.h"
+#include "macro.h"
 #include <math.h>
 
 
@@ -39,7 +40,7 @@ void threadWindowButtonCB(UserEvent event, RectangleObject * obj)
 
 void threadBackButtonCB(UserEvent event, RectangleObject * obj)
 {
-    guiChangeWindow(&mainWindow);
+    guiChangeWindow(&macroWindow);
 }
 
 void threadRunButtonCB(UserEvent event, RectangleObject * obj); // forward declaration

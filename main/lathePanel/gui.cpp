@@ -174,7 +174,7 @@ bool Button::handleEvent(Event * e)
 
     switch(e->type)
     {
-        case Event::etMove:
+        case etMove:
             if(m_isChecked && !m_isPressed && isCursorInside(e))
             {
                 m_isPressed = true;
@@ -188,7 +188,7 @@ bool Button::handleEvent(Event * e)
             }
             break;
 
-        case Event::etPress:
+        case etPress:
             if(!m_isPressed && isCursorInside(e))
             {
                 m_isPressed = true;
@@ -197,7 +197,7 @@ bool Button::handleEvent(Event * e)
             }
             break;
 
-        case Event::etRelease:
+        case etRelease:
             if(m_isChecked && isCursorInside(e) && m_cb) m_cb(etButtonPressed, this);
             
             m_isChecked = false;
@@ -233,10 +233,10 @@ bool ToggleButton::handleEvent(Event * e)
 
     switch(e->type)
     {
-        case Event::etMove:
+        case etMove:
             break;
 
-        case Event::etPress:
+        case etPress:
             if(isCursorInside(e))
             {
                 m_isPressed ^= true;
@@ -245,7 +245,7 @@ bool ToggleButton::handleEvent(Event * e)
             }
             break;
 
-        case Event::etRelease:
+        case etRelease:
             break;
 
         default:
@@ -511,7 +511,7 @@ bool NumericValue::isNeedToRedraw()
 
 bool NumericValue::handleEvent(Event * e)
 {
-    return (e->type == Event::etPress && isCursorInside(e));
+    return (e->type == etPress && isCursorInside(e));
 }
 
 void NumericValue::setValue(void * value)
@@ -617,7 +617,7 @@ bool MultilineText::drawLine(int lineNumber)
 
 bool MultilineText::handleEvent(Event * e)
 {
-    if((e->type == Event::etPress || e->type == Event::etMove)  && isCursorInside(e))
+    if((e->type == etPress || e->type == etMove)  && isCursorInside(e))
     {
         displaySetTextFont(GUI_CAPTION_DEFAULT_FONT);
 
@@ -690,18 +690,18 @@ void guiTask()
     int16_t y = 0;
     static bool pressed = false;
     static Event event;
-    event.type = Event::etNone;
+    event.type = etEventNone;
 
     if(displayReadTouch(&x, &y))
     {
         if(!pressed)
         {
             pressed = true;
-            event.type = Event::etPress;
+            event.type = etPress;
         }
         else if(x != event.x || y != event.y)
         {
-            event.type = Event::etMove;
+            event.type = etMove;
         }
         event.x = x;
         event.y = y;
@@ -711,11 +711,11 @@ void guiTask()
         if(pressed)
         {
             pressed = false;
-            event.type = Event::etRelease;
+            event.type = etRelease;
         }
     }
 
-    if(event.type != Event::etNone)
+    if(event.type != etEventNone)
     {
         //printf("event=%d x=%d y=%d\n", event.type, event.x, event.y);
         currentObject->handleEvent(&event);

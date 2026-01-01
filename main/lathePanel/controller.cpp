@@ -7,14 +7,10 @@
 #include <math.h>
 #include <cstdarg>
 #include <cassert>
-#include "winding.h"
-#include "thread.h"
+#include "macro.h"
+#include "misc.h"
 
 // espefuse.py -p COM16 set_flash_voltage 3.3V
-
-#define DEG2RAD(x) ((x) * M_PI / 180.0)
-
-extern Window mainWindow;
 
 ObjectCallbackPtr commandsStack[10];
 uint8_t commandsStackSize = 0;
@@ -92,7 +88,6 @@ Button zeroZPositionButton(235, 95, 36, 36, "0", GUI_DIGITS_DEFAULT_FONT, &zeroZ
 //=====================================================================================
 
 uint32_t spindleSpeed = 1000;
-enum SpindleState {ssRunning, ssRun, ssDecelerating, ssStopping, ssStopped};
 SpindleState spindleState = ssStopped;
 bool spindleDirectionForward = true;
 
@@ -106,8 +101,6 @@ Button spindleToggleButton(280, 260, 80, 50, "Run", GUI_BUTTON_DEFAULT_FONT, &sp
 Button spindleDirButton(380, 260, 80, 50, "Rev", GUI_BUTTON_DEFAULT_FONT, &spindleDirButtonCB);
 Button spindleDecreaseSpeedButton(280, 190, 80, 50, "-", GUI_BUTTON_DEFAULT_FONT, &spindleDecreaseSpeedButtonCB);
 Button spindleIncreaseSpeedButton(380, 190, 80, 50, "+", GUI_BUTTON_DEFAULT_FONT, &spindleIncreaseSpeedButtonCB);
-
-extern Button threadWindowButton;
 
 // void mainWindow()
 // {
@@ -243,289 +236,21 @@ void spindleDirButtonCB(UserEvent event, RectangleObject * obj)
     spindleDirButton.setText(spindleDirectionForward ? "Rev" : "Fwd");
 }
 
-
-//=====================================================================================
-//
-//                             Turning
-//
-//=====================================================================================
-
-extern Window turningWindow;
-
-float turningDeltaDiameter = -1, turningRoughPassDepth = 0.2, turningFinishPassDepth = 0.1, turningLength = -10, turningRetract = 0.1;
-uint32_t turningRoughFeed = 200, turningFinishFeed = 80, turningSpindleSpeed = 1000;
-
-NamedUnitsValue turningDeltaDiameterNUV   (10, 10 + 38 * 0, nvFloat, &turningDeltaDiameter, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Delta D", "mm", NULL);
-NamedUnitsValue turningLengthNUV          (10, 10 + 38 * 1, nvFloat, &turningLength, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Length", "mm", NULL);
-NamedUnitsValue turningRoughCutDepthNUV   (10, 10 + 38 * 2, nvFloat, &turningRoughPassDepth, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Rough cut (D)", "mm", NULL);
-NamedUnitsValue turningRoughFeedNUV       (10, 10 + 38 * 3, nvInt32, &turningRoughFeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Rough feed", "mm/min", NULL);
-NamedUnitsValue turningFinishCutDepthNUV  (10, 10 + 38 * 4, nvFloat, &turningFinishPassDepth, "%5.2f", GUI_BUTTON_DEFAULT_FONT, "Finish cut (D)", "mm", NULL);
-NamedUnitsValue turningFinishFeedNUV      (10, 10 + 38 * 5, nvInt32, &turningFinishFeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Finish feed", "mm/min", NULL);
-NamedUnitsValue turningRetractNUV         (10, 10 + 38 * 6, nvFloat, &turningRetract, "%2.2f", GUI_BUTTON_DEFAULT_FONT, "Retract", "mm", NULL);
-NamedUnitsValue turningSpindleSpeedNUV    (10, 10 + 38 * 7, nvInt32, &turningSpindleSpeed, "%4d", GUI_BUTTON_DEFAULT_FONT, "Spindle", "RPM", NULL);
-
-
-void turningBackButtonCB(UserEvent event, RectangleObject * obj)
+// Helper functions for external modules
+void setSpindleSpeed(uint32_t speed)
 {
-    guiChangeWindow(&mainWindow);
+    spindleSpeed = speed;
 }
 
-void turningRunButtonCB(UserEvent event, RectangleObject * obj); // forward declaration
-
-void turningRunButtonCB(UserEvent event, RectangleObject * obj);
-
-Button turningRunButton(370, 10, 100, 50, "Run", GUI_BUTTON_DEFAULT_FONT, &turningRunButtonCB);
-Button turningPauseButton(370, 70, 100, 50, "Pause", GUI_BUTTON_DEFAULT_FONT, NULL);
-Button turningStopButton(370, 130, 100, 50, "Stop", GUI_BUTTON_DEFAULT_FONT, NULL);
-Button turningRetractButton(370, 190, 100, 50, "Retract", GUI_BUTTON_DEFAULT_FONT, NULL);
-Button turningBackButton(370, 250, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &turningBackButtonCB);
-
-void turningWindowButtonCB(UserEvent event, RectangleObject * obj)
+SpindleState getSpindleState(void)
 {
-    turningPauseButton.setEnabled(false);
-    turningStopButton.setEnabled(false);
-    turningRetractButton.setEnabled(false);
-    guiChangeWindow(&turningWindow);
+    return spindleState;
 }
 
-
-RectangleObject * turningWindowObjects[] = {&turningDeltaDiameterNUV, &turningRoughCutDepthNUV, &turningFinishCutDepthNUV, &turningRetractNUV, 
-                                            &turningRoughFeedNUV, &turningFinishFeedNUV, &turningLengthNUV, &turningSpindleSpeedNUV,
-                                            &turningRunButton, &turningPauseButton, &turningStopButton, &turningRetractButton, &turningBackButton, NULL};
-
-Window turningWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, turningWindowObjects);
-
-void turningRunButtonCB(UserEvent event, RectangleObject * obj)
+void spindleToggle(void)
 {
-    static uint8_t state = 0;
-    static float cutDirection, targetX, startX, startZ, currentCutDepth;
-    static int16_t pass = 0, feed = 0;
-
-    if(event == etGrblError) // handle error in any state
-    {
-        //spindleCommandLock(NULL);
-        state = 0;
-        return;
-    }
-
-    switch(state)
-    {
-        case 0: // idle
-            {
-                if(obj != &turningRunButton) return;
-
-                // check that we can execute, and push our callback to get control after spindle start
-                if(!grblExecuteCommand(turningRunButtonCB, "")) return;
-                //spindleCommandLock(turningRunButtonCB);
-                guiChangeWindow(&mainWindow);
-
-                cutDirection = turningDeltaDiameter < 0 ? -1.0f : 1.0f;
-                targetX = grblXPosition;
-                startX = grblXPosition;
-                startZ = grblZPosition;
-                currentCutDepth = 0;
-                state = 1;
-                pass = 1;
-                feed = turningRoughFeed;
-
-                spindleSpeed = turningSpindleSpeed;
-                
-                if(spindleState == ssStopped) spindleToggleButtonCB(etButtonPressed, NULL);
-            }
-            break;
-
-        case 1: // start loop
-            {
-                float diff = fabs(turningDeltaDiameter) - currentCutDepth;
-
-                if(diff == 0)
-                {
-                    state = 5;
-                    grblExecuteCommand(turningRunButtonCB, "G0X%.3f\n", targetX);
-                    break;
-                }
-
-                if(diff >= turningRoughPassDepth + turningFinishPassDepth)
-                {
-                    currentCutDepth = pass++ * turningRoughPassDepth;
-                } 
-                else if(diff <= turningFinishPassDepth + 0.001 /*tolerance*/)
-                {
-                    currentCutDepth = fabs(turningDeltaDiameter);
-                    feed = turningFinishFeed;
-                }
-                else
-                {
-                    currentCutDepth = fabs(turningDeltaDiameter) - turningFinishPassDepth;
-                }
-
-                targetX = startX + currentCutDepth * cutDirection / 2; 
-                grblExecuteCommand(turningRunButtonCB, "G0X%.3f\n", targetX);
-                state = 2;
-            }
-            break;
-        
-        case 2: // main part
-            grblExecuteCommand(turningRunButtonCB, "G1Z%.3fF%d\n", startZ + turningLength, feed);
-            state = 3;
-            break;
-        
-        case 3: // retract
-            grblExecuteCommand(turningRunButtonCB, "G0X%.3f\n", targetX - turningRetract * cutDirection);
-            state = 4;
-            break;
-        
-        case 4: // back to start
-            grblExecuteCommand(turningRunButtonCB, "G0Z%.3f\n", startZ);
-            state = 1;
-            break;
-
-        case 5: // stop
-            state = 0;
-            if(spindleState == ssRun) spindleToggleButtonCB(etButtonPressed, NULL);
-            break;
-    }
+    spindleToggleButtonCB(etButtonPressed, NULL);
 }
-
-//=====================================================================================
-//
-//                             Cone
-//
-//=====================================================================================
-
-float coneAngle = 10;
-NamedUnitsValue coneAngleNUV (10, 10 + 38 * 0, nvFloat, &coneAngle, "%6.2f", GUI_BUTTON_DEFAULT_FONT, "Cone angle", "deg", NULL);
-
-extern Window coneWindow;
-
-void coneBackButtonCB(UserEvent event, RectangleObject * obj)
-{
-    guiChangeWindow(&mainWindow);
-}
-
-void coneRunButtonCB(UserEvent event, RectangleObject * obj); // forward declaration
-
-void coneRunButtonCB(UserEvent event, RectangleObject * obj);
-
-Button coneRunButton(370, 10, 100, 50, "Run", GUI_BUTTON_DEFAULT_FONT, &coneRunButtonCB);
-Button conePauseButton(370, 70, 100, 50, "Pause", GUI_BUTTON_DEFAULT_FONT, NULL);
-Button coneStopButton(370, 130, 100, 50, "Stop", GUI_BUTTON_DEFAULT_FONT, NULL);
-Button coneRetractButton(370, 190, 100, 50, "Retract", GUI_BUTTON_DEFAULT_FONT, NULL);
-Button coneBackButton(370, 250, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &coneBackButtonCB);
-
-void coneWindowButtonCB(UserEvent event, RectangleObject * obj)
-{
-    conePauseButton.setEnabled(false);
-    coneStopButton.setEnabled(false);
-    coneRetractButton.setEnabled(false);
-    guiChangeWindow(&coneWindow);
-}
-
-
-RectangleObject * coneWindowObjects[] = {&coneAngleNUV, &turningLengthNUV, &turningRoughCutDepthNUV, &turningRoughFeedNUV, 
-                                         &turningFinishCutDepthNUV, &turningFinishFeedNUV,
-                                         &turningRetractNUV, &turningSpindleSpeedNUV,
-                                         &coneRunButton, &conePauseButton, &coneStopButton, &coneRetractButton, &coneBackButton, NULL};
-
-Window coneWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, coneWindowObjects);
-
-void coneRunButtonCB(UserEvent event, RectangleObject * obj)
-{
-    static uint8_t state = 0;
-    static float cutDirection, targetX, targetZ, startX, startZ, currentCutDepth;
-    static int16_t pass = 0, feed;
-
-    if(event == etGrblError) // handle error in any state
-    {
-        //spindleCommandLock(NULL);
-        state = 0;
-        return;
-    }
-
-    switch(state)
-    {
-        case 0: // idle
-            {
-                if(obj != &coneRunButton) return;
-
-                // check that we can execute, and push our callback to get control after spindle start
-                if(!grblExecuteCommand(coneRunButtonCB, "")) return;
-                //spindleCommandLock(turningRunButtonCB);
-                guiChangeWindow(&mainWindow);
-
-                cutDirection = coneAngle > 0 ? -1.0f : 1.0f;
-                targetX = grblXPosition;
-                targetZ = grblZPosition;
-                startX = grblXPosition;
-                startZ = grblZPosition;
-                currentCutDepth = 0;
-                turningDeltaDiameter = sin(DEG2RAD(fabs(coneAngle))) * fabs(turningLength);
-                state = 1;
-                pass = 1;
-                feed = turningRoughFeed;
-
-                spindleSpeed = turningSpindleSpeed;
-
-                if(spindleState == ssStopped) spindleToggleButtonCB(etButtonPressed, NULL);
-            }
-            break;
-
-        case 1: // start loop
-            {
-                float diff = fabs(turningDeltaDiameter) - currentCutDepth;
-
-                if(diff == 0)
-                {
-                    state = 0;
-                    if(spindleState == ssRun) spindleToggleButtonCB(etButtonPressed, NULL);
-                    break;
-                }
-
-                if(diff >= turningRoughPassDepth + turningFinishPassDepth)
-                {
-                    currentCutDepth = pass++ * turningRoughPassDepth;
-                } 
-                else if(diff <= turningFinishPassDepth + 0.001 /*tolerance*/)
-                {
-                    currentCutDepth = fabs(turningDeltaDiameter);
-                    feed = turningFinishFeed;
-                }
-                else
-                {
-                    currentCutDepth = fabs(turningDeltaDiameter) - turningFinishPassDepth;
-                }
-
-                targetX = startX + currentCutDepth * cutDirection / cos(DEG2RAD(coneAngle)) / 2; 
-                grblExecuteCommand(coneRunButtonCB, "G0X%.3f\n", targetX);
-                state = 2;
-            }
-            break;
-        
-        case 2: // main part
-            if(turningLength < 0)
-                targetZ -= currentCutDepth / sin(DEG2RAD(fabs(coneAngle)));
-            else
-                targetZ += currentCutDepth / sin(DEG2RAD(fabs(coneAngle)));
-            targetX = startX;
-            grblExecuteCommand(coneRunButtonCB, "G1X%.3fZ%.3fF%d\n", targetX, targetZ, feed);
-            state = 3;
-            break;
-        
-        case 3: // retract
-            targetX = startX - turningRetract * cutDirection / cos(DEG2RAD(coneAngle));
-            grblExecuteCommand(coneRunButtonCB, "G0X%.3f\n", targetX);
-            state = 4;
-            break;
-        
-        case 4: // back to start
-            targetZ = startZ;
-            targetX = startX + (currentCutDepth - turningRetract) * cutDirection / cos(DEG2RAD(coneAngle)) / 2; 
-            grblExecuteCommand(coneRunButtonCB, "G0X%.3fZ%.3f\n", targetX, targetZ);
-            state = 1;
-            break;
-    }
-}
-
 
 //=====================================================================================
 //
@@ -577,122 +302,7 @@ void jogStepButtonCB(UserEvent event, RectangleObject * obj)
 }
 
 
-//=====================================================================================
-//
-//                      FILE SCREEN      
-//
-//=====================================================================================
 
-char fileListBuf[1024];
-MultilineText fileList(10, 10, 350, 300, fileListBuf);
-
-void fileBackButtonCB(UserEvent event, RectangleObject * obj)
-{
-    guiChangeWindow(&mainWindow);
-}
-
-void fileRunButtonCB(UserEvent event, RectangleObject * obj)
-{
-    const char * fileName = fileList.getLineText(fileList.getSelectedLineNumber());
-    if(fileName)
-    {
-        grblExecuteCommand(NULL, "$F=%s", fileName);
-        guiChangeWindow(&mainWindow);
-    }
-}
-
-Button fileBackButton(370, 260, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &fileBackButtonCB);
-Button fileRunButton(370, 10, 100, 50, "Run", GUI_BUTTON_DEFAULT_FONT, &fileRunButtonCB);
-
-RectangleObject * fileWindowObjects[] = {&fileList, &fileRunButton, &fileBackButton, NULL};
-
-Window fileWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, fileWindowObjects);
-
-void fileButtonCB(UserEvent event, RectangleObject * obj)
-{
-    //grblExecuteCommand("$F+");
-    grblListFiles(fileListBuf, sizeof(fileListBuf));
-    //printf(buf);
-    guiChangeWindow(&fileWindow);
-}
-
-//=====================================================================================
-//
-//                      MISC SCREEN      
-//
-//=====================================================================================
-
-void enaButtonCB(UserEvent event, RectangleObject * obj)
-{
-    setMotorState(0);
-}
-
-void disButtonCB(UserEvent event, RectangleObject * obj)
-{
-    setMotorState(1);
-}
-
-void resetButtonCB(UserEvent event, RectangleObject * obj)
-{
-    grblRestart();
-}
-
-void rigidButtonCB(UserEvent event, RectangleObject * obj);
-
-void miscBackButtonCB(UserEvent event, RectangleObject * obj)
-{
-    guiChangeWindow(&mainWindow);
-}
-
-char captionIPAddr[16] = {"0.0.0.0"};
-
-Button enaButton(10, 10, 90, 50, "Enable", GUI_BUTTON_DEFAULT_FONT, enaButtonCB);
-Button disButton(120, 10, 90, 50, "Disable", GUI_BUTTON_DEFAULT_FONT, disButtonCB);
-Button resetButton(230, 10, 90, 50, "Reset", GUI_BUTTON_DEFAULT_FONT, resetButtonCB);
-Button rigidButton(340, 10, 90, 50, "Rigid", GUI_BUTTON_DEFAULT_FONT, rigidButtonCB);
-Caption ipAddr(10, 270, 150, 50, captionIPAddr, GUI_BUTTON_DEFAULT_FONT);
-Button miscBackButton(370, 260, 100, 50, "Back", GUI_BUTTON_DEFAULT_FONT, &miscBackButtonCB);
-int32_t currentAngle = 0;
-NamedUnitsValue currentAngleNUV (10, 70, nvInt32, &currentAngle, "%6d", GUI_BUTTON_DEFAULT_FONT, "Angle", "deg", NULL);
-
-RectangleObject * miscWindowObjects[] = {&enaButton, &disButton, &resetButton, &miscBackButton, &rigidButton, &ipAddr, &currentAngleNUV, NULL};
-
-Window miscWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, miscWindowObjects);
-
-void miscButtonCB(UserEvent event, RectangleObject * obj)
-{
-    strcpy(captionIPAddr, grblGetIP());
-    guiChangeWindow(&miscWindow);
-}
-
-void rigidButtonCB(UserEvent event, RectangleObject * obj)
-{
-    static uint16_t r5, r6, r21;
-
-    if(*rigidButton.getText() == 'R')
-    {
-        if(!grblModbusWriteReg(5, 250, &r5)   ||
-           !grblModbusWriteReg(6, 10, &r6)    ||
-           !grblModbusWriteReg(21, 120, &r21) ||
-           !grblModbusWriteReg(98, 1, NULL))
-        {
-            printf("Failed to set modbus registers\n");
-            return;
-        }
-        rigidButton.setText("Soft");
-    }
-    else
-    {
-        if(!grblModbusWriteReg(5, r5, NULL) ||
-           !grblModbusWriteReg(6, r6, NULL) ||
-           !grblModbusWriteReg(21, r21, NULL) ||
-           !grblModbusWriteReg(98, 0, NULL))
-        {
-            printf("Failed to restore modbus registers\n");
-        }
-        rigidButton.setText("Rigid");
-    }
-}
 
 //=====================================================================================
 //
@@ -725,20 +335,15 @@ void holdButtonCB(UserEvent event, RectangleObject * obj)
     }
 }
 
-Button threadWindowButton(10, 140, 100, 50, "Thread", GUI_BUTTON_DEFAULT_FONT, &threadWindowButtonCB);
+Button macroButton(10, 140, 100, 50, "Macro", GUI_BUTTON_DEFAULT_FONT, macroWindowButtonCB);
 Button miscButton(120, 140, 70, 50, "Misc", GUI_BUTTON_DEFAULT_FONT, miscButtonCB);
-Button fileButton(200, 140, 70, 50, "File", GUI_BUTTON_DEFAULT_FONT, fileButtonCB);
-Button turningWindowButton(10, 200, 100, 50, "Turning", GUI_BUTTON_DEFAULT_FONT, &turningWindowButtonCB);
-Button coneWindowButton(120, 200, 70, 50, "Cone", GUI_BUTTON_DEFAULT_FONT, &coneWindowButtonCB);
-Button windingWindowButton(200, 200, 70, 50, "Wind", GUI_BUTTON_DEFAULT_FONT, &windingWindowButtonCB);
 
 RectangleObject * mainWindowObjects[] = {&xPositionCaption, &yPositionCaption, &zPositionCaption, 
                                   &zeroXPositionButton, &zeroYPositionButton, &zeroZPositionButton, 
                                   &jogXAxisButton, &jogYAxisButton, &jogZAxisButton, 
                                   &jogStep1Button, &jogStep01Button, &jogStep001Button,
-                                  &threadWindowButton, 
                                   &spindleSpeedCaption, &spindleToggleButton, &spindleIncreaseSpeedButton, &spindleDecreaseSpeedButton, &spindleDirButton, 
-                                  &miscButton, &holdButton, &fileButton, &turningWindowButton, &coneWindowButton, &windingWindowButton,
+                                  &macroButton, &miscButton, &holdButton,
                                   &grblStateValue,
                                   NULL};
 
@@ -790,12 +395,12 @@ void controllerTask(void)
 
     if(grblCommandInProgress)
     {
-        UserEvent event = etNone;
+        UserEvent event = etUserNone;
 
         if((grblState == 1) || grblGetLastError()) event = etGrblError;
         else if(grblExecuteCommand(&checkGrblCommand)) event = etGrblOk;
 
-        if(event != etNone)
+        if(event != etUserNone)
         {
             grblCommandInProgress = false;
             while(commandsStackSize)

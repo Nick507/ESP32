@@ -81,6 +81,13 @@ set(LATHE_PANEL_SOURCE
  lathePanel/controller.cpp
  lathePanel/display.cpp
  lathePanel/gui.cpp
+ lathePanel/macro.cpp
+ lathePanel/misc.cpp
+ lathePanel/thread.cpp
+ lathePanel/turning.cpp
+ lathePanel/cone.cpp
+ lathePanel/winding.cpp
+ lathePanel/file.cpp
 )
 
 set(I2S_SOURCE

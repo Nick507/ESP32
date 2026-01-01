@@ -17,10 +17,11 @@
 #define GUI_CAPTION_DEFAULT_FONT &FreeSans12pt7b
 #define GUI_DIGITS_DEFAULT_FONT &FixedFont24x32
 
+enum EventType {etEventNone, etPress, etRelease, etMove};
+
 struct Event
 {
-    enum Type {etNone, etPress, etRelease, etMove};
-    Type type;
+    EventType type;
     uint16_t x;
     uint16_t y;
 };
@@ -60,7 +61,7 @@ public:
     uint16_t getSY() {return m_sy;}
 };
 
-enum UserEvent {etNone, etButtonPressed, etButtonReleased, etGrblOk, etGrblError, etValueChanged};
+enum UserEvent {etUserNone, etButtonPressed, etButtonReleased, etGrblOk, etGrblError, etValueChanged};
 
 typedef void (* ObjectCallbackPtr) (UserEvent e, RectangleObject * obj);
 
