@@ -83,6 +83,7 @@ set(LATHE_PANEL_SOURCE
  lathePanel/gui.cpp
  lathePanel/macro.cpp
  lathePanel/misc.cpp
+ lathePanel/settings.cpp
  lathePanel/thread.cpp
  lathePanel/turning.cpp
  lathePanel/cone.cpp

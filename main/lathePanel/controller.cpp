@@ -9,6 +9,7 @@
 #include <cassert>
 #include "macro.h"
 #include "misc.h"
+#include "settings.h"
 
 // espefuse.py -p COM16 set_flash_voltage 3.3V
 
@@ -349,6 +350,7 @@ void holdButtonCB(UserEvent event, RectangleObject * obj)
 }
 
 Button macroButton(10, 140, 100, 50, "Macro", GUI_BUTTON_DEFAULT_FONT, macroWindowButtonCB);
+Button settingsButton(10, 200, 100, 50, "Settings", GUI_BUTTON_DEFAULT_FONT, settingsWindowButtonCB);
 Button miscButton(120, 140, 70, 50, "Misc", GUI_BUTTON_DEFAULT_FONT, miscButtonCB);
 
 RectangleObject * mainWindowObjects[] = {&xPositionCaption, &yPositionCaption, &zPositionCaption, 
@@ -356,7 +358,7 @@ RectangleObject * mainWindowObjects[] = {&xPositionCaption, &yPositionCaption, &
                                   &jogXAxisButton, &jogYAxisButton, &jogZAxisButton, 
                                   &jogStep1Button, &jogStep01Button, &jogStep001Button,
                                   &spindleSpeedCaption, &spindleToggleButton, &spindleIncreaseSpeedButton, &spindleDecreaseSpeedButton, &spindleDirButton, 
-                                  &macroButton, &miscButton, &holdButton,
+                                  &macroButton, &miscButton, &settingsButton, &holdButton,
                                   &grblStateValue,
                                   NULL};
 
@@ -365,6 +367,7 @@ Window mainWindow(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, mainWindowObjects);
 void controllerInit(void)
 {
     grblConnectInit();
+    settingsWindowInit();
     guiInit(&mainWindow);
 }
 

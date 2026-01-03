@@ -13,6 +13,7 @@
 #include "boards/my_machine_map.h"
 #include "esp_ipc.h"
 #include "grbl/planner.h"
+#include "grbl/gcode.h"
 
 // ================ exposed variables =============
 float grblXPosition;
@@ -110,25 +111,54 @@ bool grblExecuteCommand(char* command)
     return res;
 }
 
+// Thread-safe wrapper for gc_execute_block
+typedef struct {
+    char* command;
+    status_code_t result;
+    bool buffer_full;
+} gc_exec_args_t;
+
+static void gc_execute_on_grbl_core(void* arg)
+{
+    gc_exec_args_t* args = (gc_exec_args_t*)arg;
+    
+    // Check buffer space atomically on GRBL's core
+    if(plan_get_block_buffer_available() < 5) 
+    {
+        args->buffer_full = true;
+        args->result = Status_Unhandled;
+        return;
+    }
+    
+    args->buffer_full = false;
+    args->result = gc_execute_block(args->command);
+}
+
 bool grblExecuteCommandBuffered(char* command)
 {
-    // Check planner buffer has space
-    if(plan_get_block_buffer_available() < 34) 
-    {
-        return false;  // Wait for more space
-    }
-
     if(!command[0]) 
     {
         return true;
     }
 
-    status_code_t result = gc_execute_block(command);
+    // Execute on GRBL's core (Core 1) using IPC - this includes buffer check
+    gc_exec_args_t args = {
+        .command = command,
+        .result = Status_Unhandled,
+        .buffer_full = false
+    };
     
-    printf(">(%s) %s", result == Status_OK ? "OK" : "FAILED", command);
+    esp_ipc_call_blocking(1, gc_execute_on_grbl_core, &args);
+    
+    // Buffer full is not an error, just wait for next cycle
+    if(args.buffer_full) {
+        return false;
+    }
+    
+    printf(">(%s) %s", args.result == Status_OK ? "OK" : "FAILED", command);
     if(!strchr(command, '\n')) printf("\n");
     
-    return result == Status_OK;
+    return args.result == Status_OK;
 }
 
 void getPositions()
