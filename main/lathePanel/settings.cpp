@@ -5,6 +5,12 @@
 #include <string.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+// Windows simulator stub - local backlash values
+static float xBacklash = 0.0f;
+static float yBacklash = 0.0f;
+static float zBacklash = 0.0f;
+#else
 extern "C" {
 #include "../grbl/grbl.h"
 #include "../grbl/settings.h"
@@ -18,12 +24,19 @@ extern settings_t settings;
 #define SETTING_BACKLASH_X  ((setting_id_t)160)
 #define SETTING_BACKLASH_Y  ((setting_id_t)161)
 #define SETTING_BACKLASH_Z  ((setting_id_t)162)
+#endif
 
 // UI Components - using NamedUnitsValue for clickable editing (like winding.cpp)
+#ifdef _WIN32
+NamedUnitsValue xBacklashNUV(10, 10, nvFloat, &xBacklash, "%7.3f", GUI_BUTTON_DEFAULT_FONT, "X Backlash", "mm", NULL);
+NamedUnitsValue yBacklashNUV(10, 10 + 38, nvFloat, &yBacklash, "%7.3f", GUI_BUTTON_DEFAULT_FONT, "Y Backlash", "mm", NULL);
+NamedUnitsValue zBacklashNUV(10, 10 + 38 * 2, nvFloat, &zBacklash, "%7.3f", GUI_BUTTON_DEFAULT_FONT, "Z Backlash", "mm", NULL);
+#else
 // These directly bind to settings.axis[].backlash in GRBL's global settings structure
 NamedUnitsValue xBacklashNUV(10, 10, nvFloat, &settings.axis[X_AXIS].backlash, "%7.3f", GUI_BUTTON_DEFAULT_FONT, "X Backlash", "mm", NULL);
 NamedUnitsValue yBacklashNUV(10, 10 + 38, nvFloat, &settings.axis[Y_AXIS].backlash, "%7.3f", GUI_BUTTON_DEFAULT_FONT, "Y Backlash", "mm", NULL);
 NamedUnitsValue zBacklashNUV(10, 10 + 38 * 2, nvFloat, &settings.axis[Z_AXIS].backlash, "%7.3f", GUI_BUTTON_DEFAULT_FONT, "Z Backlash", "mm", NULL);
+#endif
 
 // Forward declarations
 void settingsBackButtonCB(UserEvent event, RectangleObject * obj);
@@ -53,6 +66,11 @@ static void refreshDisplay()
 // Save all settings to GRBL and persist to EEPROM
 void settingsSaveButtonCB(UserEvent event, RectangleObject * obj)
 {
+#ifdef _WIN32
+    // Windows simulator - just print values
+    printf("Backlash settings saved: X=%.3f Y=%.3f Z=%.3f\n", 
+           xBacklash, yBacklash, zBacklash);
+#else
     // Values are already updated in settings.axis[].backlash by the NumericValueEditor
     // We just need to persist to EEPROM/NVS
     settings_write_global();
@@ -60,6 +78,7 @@ void settingsSaveButtonCB(UserEvent event, RectangleObject * obj)
            settings.axis[X_AXIS].backlash,
            settings.axis[Y_AXIS].backlash,
            settings.axis[Z_AXIS].backlash);
+#endif
     
     // Go back to main window
     guiChangeWindow(&mainWindow);
